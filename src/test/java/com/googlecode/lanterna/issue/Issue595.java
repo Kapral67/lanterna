@@ -49,49 +49,10 @@ class Issue595 {
 
             // POC
             final WaitingDialog waitingDialog = WaitingDialog.createDialog("TITLE", "TEXT");
-            final ExecutorService executorService = Executors.newSingleThreadExecutor();
-            Thread.sleep(SLEEP_MILLIS);
-            waitingDialog.showDialog(textGUI, false);
-            CompletableFuture.runAsync(() -> {
-                                 try {
-                                     Thread.sleep(SLEEP_MILLIS);
-                                 } catch (final InterruptedException e) {
-                                     Thread.currentThread()
-                                           .interrupt();
-                                     throw new RuntimeException(e);
-                                 } finally {
-                                     waitingDialog.close();
-                                 }
-                             }, executorService)
-                             .exceptionally(e -> {
-                                 throw new RuntimeException(e);
-                             });
-            waitingDialog.waitUntilClosed();
+            test(textGUI, waitingDialog);
 
-            // Ensure Executor Thread Dead
-            executorService.shutdownNow();
-            if (!executorService.awaitTermination(SLEEP_SECONDS, TimeUnit.SECONDS)) {
-                throw new IllegalStateException("ExecutorService Unstoppable");
-            }
-
-            // Check for Animated Label Hanging Thread
-            final String animatedLabelName = AnimatedLabel.class.getSimpleName()
-                                                                .toLowerCase();
-            final Optional<Thread> optionalAnimatedLabelThread = Thread.getAllStackTraces()
-                                                                       .keySet()
-                                                                       .stream()
-                                                                       .filter(thread -> thread.getName()
-                                                                                               .toLowerCase()
-                                                                                               .contains(animatedLabelName))
-                                                                       .findAny();
-            if (!optionalAnimatedLabelThread.isPresent()) {
-                return;
-            }
-            final Thread thread = optionalAnimatedLabelThread.get();
-            thread.join(SLEEP_MILLIS);
-            if (thread.isAlive()) {
-                throw new IllegalStateException("AnimatedLabel Thread Waiting");
-            }
+            // test reuse
+            test(textGUI, waitingDialog);
 
         } catch (final Throwable e) {
             if (e instanceof InterruptedException) {
@@ -104,6 +65,48 @@ class Issue595 {
             System.err.print(stringWriter);
         } finally {
             System.exit(exit_code);
+        }
+    }
+
+    private static void test(WindowBasedTextGUI textGUI, WaitingDialog waitingDialog) throws InterruptedException {
+        final ExecutorService executorService = Executors.newSingleThreadExecutor();
+        Thread.sleep(SLEEP_MILLIS);
+        waitingDialog.showDialog(textGUI, false);
+        CompletableFuture.runAsync(() -> {
+                             try {
+                                 Thread.sleep(SLEEP_MILLIS);
+                             } catch (final InterruptedException e) {
+                                 Thread.currentThread()
+                                       .interrupt();
+                                 throw new RuntimeException(e);
+                             } finally {
+                                 waitingDialog.close();
+                             }
+                         }, executorService)
+                         .exceptionally(e -> {
+                             throw new RuntimeException(e);
+                         });
+        waitingDialog.waitUntilClosed();
+
+        // Ensure Executor Thread Dead
+        executorService.shutdownNow();
+        if (!executorService.awaitTermination(SLEEP_SECONDS, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("ExecutorService Unstoppable");
+        }
+
+        // Check for Animated Label Hanging Thread
+        final Optional<Thread> optionalAnimatedLabelThread = Thread.getAllStackTraces()
+                                                                   .keySet()
+                                                                   .stream()
+                                                                   .filter(thread -> thread.getName().contains(AnimatedLabel.AnimatedLabelThreadFactory.NAME))
+                                                                   .findAny();
+        if (!optionalAnimatedLabelThread.isPresent()) {
+            return;
+        }
+        final Thread thread = optionalAnimatedLabelThread.get();
+        thread.join(SLEEP_MILLIS);
+        if (thread.isAlive()) {
+            throw new IllegalStateException("AnimatedLabel Thread Waiting");
         }
     }
 }
